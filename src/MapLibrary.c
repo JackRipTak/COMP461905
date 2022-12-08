@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <elf.h>
 #include <unistd.h> //for getpagesize
+#include <fcntl.h>
+
 #include <sys/mman.h>
 
 #include "Link.h"
@@ -97,5 +99,28 @@ void *MapLibrary(const char *libpath)
     */
    
     /* Your code here */
-    return NULL;
+    //printf("%d %d\n",PT_LOAD, PT_DYNAMIC);
+    int fd = open(libpath, O_RDONLY);
+    Elf64_Ehdr *ehd = mmap(NULL, sizeof(Elf64_Ehdr), PROT_READ, MAP_PRIVATE, fd, 0);
+    LinkMap *lib = malloc(sizeof(LinkMap));
+    lib -> addr = 0;
+    Elf64_Phdr *seg = (Elf64_Phdr *) ((char *)ehd + ehd -> e_phoff );
+    for (int i = 0; i < ehd->e_phnum; i++) {
+        Elf64_Phdr *cur = &seg[i];
+        if(cur->p_type == PT_LOAD){
+            int prot = 0;
+            prot |= (cur->p_flags & PF_R) ? PROT_READ : 0;
+            prot |= (cur->p_flags & PF_W) ? PROT_WRITE : 0;
+            prot |= (cur->p_flags & PF_X) ? PROT_EXEC : 0;
+            void *tmp = mmap(cur->p_vaddr, ALIGN_UP(cur->p_memsz, getpagesize()), prot, MAP_FILE | MAP_PRIVATE , fd, ALIGN_DOWN(cur->p_offset, getpagesize()));
+            if(!lib->addr) lib->addr = tmp;
+
+        }
+        else if(cur->p_type == PT_DYNAMIC){
+            lib->dyn=(Elf64_Dyn *)((char *)cur + cur->p_offset);
+        }
+    }
+    fill_info(lib);
+    setup_hash(lib);
+    return lib;
 }
