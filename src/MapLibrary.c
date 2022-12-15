@@ -5,6 +5,7 @@
 #include <elf.h>
 #include <unistd.h> //for getpagesize
 #include <fcntl.h>
+#include<assert.h>
 
 #include <sys/mman.h>
 
@@ -80,7 +81,7 @@ static void fill_info(LinkMap *lib)
 
 void *MapLibrary(const char *libpath)
 {
-    /*
+    /*=
      * hint:
      * 
      * lib = malloc(sizeof(LinkMap));
@@ -100,7 +101,7 @@ void *MapLibrary(const char *libpath)
    
     /* Your code here */
     //printf("%d %d\n",PT_LOAD, PT_DYNAMIC);
-    int fd = open(libpath, O_RDONLY);
+      int fd = open(libpath, O_RDONLY);
     Elf64_Ehdr *ehd = mmap(NULL, sizeof(Elf64_Ehdr), PROT_READ, MAP_PRIVATE, fd, 0);
     LinkMap *lib = malloc(sizeof(LinkMap));
     lib -> addr = 0;
@@ -112,12 +113,18 @@ void *MapLibrary(const char *libpath)
             prot |= (cur->p_flags & PF_R) ? PROT_READ : 0;
             prot |= (cur->p_flags & PF_W) ? PROT_WRITE : 0;
             prot |= (cur->p_flags & PF_X) ? PROT_EXEC : 0;
-            void *tmp = mmap(cur->p_vaddr, ALIGN_UP(cur->p_memsz, getpagesize()), prot, MAP_FILE | MAP_PRIVATE , fd, ALIGN_DOWN(cur->p_offset, getpagesize()));
+            
+            void * sp= ALIGN_DOWN(cur->p_vaddr+lib->addr,getpagesize());
+            void *tmp;
+            if(!lib->addr)
+                tmp = mmap(NULL, 1000000, prot, MAP_FILE | MAP_PRIVATE  , fd, ALIGN_DOWN(cur->p_offset, getpagesize()));
+            else
+                tmp = mmap(ALIGN_DOWN(cur->p_vaddr+lib->addr,getpagesize()), ALIGN_UP(cur->p_memsz, getpagesize()), prot, MAP_FILE | MAP_PRIVATE |MAP_FIXED , fd, ALIGN_DOWN(cur->p_offset, getpagesize())); 
             if(!lib->addr) lib->addr = tmp;
-
+            
         }
         else if(cur->p_type == PT_DYNAMIC){
-            lib->dyn=(Elf64_Dyn *)((char *)cur + cur->p_offset);
+            lib->dyn=(lib -> addr + cur->p_vaddr);
         }
     }
     fill_info(lib);
